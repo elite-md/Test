@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Pairing</title>
+</head>
+<body>
+    <h2>Pair Your WhatsApp</h2>
+    <input type="text" id="phone" placeholder="Enter phone number" />
+    <button onclick="pairWhatsApp()">Get Pairing Code</button>
+    <p id="pairingCode"></p>
+    <a id="download" href="#" style="display:none;">Download creds.json</a>
+
+    <script>
+        async function pairWhatsApp() {
+            const phone = document.getElementById("phone").value;
+            if (!phone) {
+                alert("Please enter your phone number.");
+                return;
+            }
+
+            const response = await fetch("http://localhost:5000/pair", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ phone })
+            });
+
+            const data = await response.json();
+            if (data.pairingCode) {
+                document.getElementById("pairingCode").innerText = "Scan this QR code in WhatsApp: " + data.pairingCode;
+            } else {
+                alert("Failed to generate pairing code.");
+            }
+        }
+
+        async function checkDownload() {
+            const response = await fetch("http://localhost:5000/download");
+            if (response.ok) {
+                document.getElementById("download").href = "http://localhost:5000/download";
+                document.getElementById("download").style.display = "block";
+            }
+        }
+
+        setInterval(checkDownload, 5000);
+    </script>
+</body>
+</html>
