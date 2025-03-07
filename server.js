@@ -1,50 +1,72 @@
-const express = require("express");
-const makeWASocket = require("@whiskeysockets/baileys").default;
-const { useMultiFileAuthState } = require("@whiskeysockets/baileys");
-const fs = require("fs");
-const cors = require("cors");
+const express = require('express');
+const { Client, LocalAuth } = require('whatsapp-web.js');
+const qrcode = require('qrcode');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
+
+// Middleware
 app.use(express.json());
-app.use(cors());
+app.use(express.static(path.join(__dirname, 'public'))); // Serve static files
 
-let sock;
-let credsPath = "./auth";
+let client;
 
-app.post("/pair", async (req, res) => {
-    try {
-        if (!req.body.phone) return res.status(400).json({ error: "Phone number is required" });
+// Route to initialize WhatsApp client and generate QR code
+app.post('/init', (req, res) => {
+    const { number } = req.body;
 
-        // Setup authentication
-        const { state, saveCreds } = await useMultiFileAuthState(credsPath);
-        sock = makeWASocket({ auth: state });
+    // Initialize WhatsApp client
+    client = new Client({
+        authStrategy: new LocalAuth({ clientId: number }),
+        puppeteer: { headless: true },
+    });
 
-        sock.ev.on("creds.update", saveCreds);
-        sock.ev.on("connection.update", (update) => {
-            const { qr, connection } = update;
-            if (qr) {
-                res.json({ pairingCode: qr });
-            } else if (connection === "open") {
-                console.log("WhatsApp linked successfully");
+    // Generate QR code
+    client.on('qr', (qr) => {
+        qrcode.toDataURL(qr, (err, url) => {
+            if (err) {
+                console.error('Error generating QR code:', err);
+                res.status(500).send('Error generating QR code');
+            } else {
+                res.json({ qr: url });
             }
         });
+    });
 
-    } catch (error) {
-        console.error("Error:", error);
-        res.status(500).json({ error: "Failed to generate pairing code" });
-    }
-});
-app.get("/", (req, res) => {
-    res.send("WhatsApp Pairing API is running!");
-});
-app.get("/download", (req, res) => {
-    const credsFile = `${credsPath}/creds.json`;
-    if (fs.existsSync(credsFile)) {
-        res.download(credsFile, "creds.json");
-    } else {
-        res.status(404).json({ error: "creds.json not found" });
-    }
+    // Handle authentication
+    client.on('authenticated', () => {
+        console.log('Authenticated!');
+    });
+
+    // Handle ready event
+    client.on('ready', () => {
+        console.log('Client is ready!');
+
+        // Send the creds.json file to the user's WhatsApp
+        const credsPath = path.join(__dirname, '.wwebjs_auth', `session-${number}`, 'creds.json');
+        if (fs.existsSync(credsPath)) {
+            const creds = fs.readFileSync(credsPath);
+            client.sendMessage(`${number}@c.us`, {
+                media: Buffer.from(creds),
+                caption: 'Your creds.json file',
+                filename: 'creds.json',
+            }).then(() => {
+                console.log('creds.json sent successfully!');
+            }).catch((err) => {
+                console.error('Error sending creds.json:', err);
+            });
+        } else {
+            console.error('creds.json file not found!');
+        }
+    });
+
+    // Initialize the client
+    client.initialize();
 });
 
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// Start the server
+app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+});
