@@ -35,7 +35,9 @@ app.post("/pair", async (req, res) => {
         res.status(500).json({ error: "Failed to generate pairing code" });
     }
 });
-
+app.get("/", (req, res) => {
+    res.send("WhatsApp Pairing API is running!");
+});
 app.get("/download", (req, res) => {
     const credsFile = `${credsPath}/creds.json`;
     if (fs.existsSync(credsFile)) {
